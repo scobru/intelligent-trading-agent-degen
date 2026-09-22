@@ -20,10 +20,8 @@ from uniswap import UniswapV3
 
 logger = logging.getLogger(__name__)
 
-POSITIONS_PATH = os.getenv(
-    "POSITIONS_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "positions.json"),
-)
+# Stesso criterio del database: su volume persistente quando c'e'
+POSITIONS_PATH = config.POSITIONS_PATH
 
 
 class PositionStore:

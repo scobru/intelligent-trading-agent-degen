@@ -94,10 +94,12 @@ processo, nessun servizio Node da buildare (a differenza del bot perp).
 1. **Crea l'app** e collega il repo (o `caprover deploy` dalla cartella).
 2. **App Configs → Container HTTP Port: `3000`.** CapRover di default
    assume la 80: senza questo la dashboard non risponde.
-3. **Persistent Directories** → mappa `/app/data`. Il database SQLite ci
-   finisce da solo (`config.default_db_path()` usa `/app/data` quando esiste),
-   così storico, swap e screening sopravvivono ai redeploy. Senza questa
-   mappatura riparti da zero a ogni deploy.
+3. **Persistent Directories** → mappa `/app/data`. Database SQLite e
+   `positions.json` ci finiscono da soli (`config.persistent_path()` usa
+   `/app/data` quando esiste), così storico, swap, screening **e i prezzi di
+   carico delle posizioni** sopravvivono ai redeploy. Senza questa mappatura
+   riparti da zero a ogni deploy: il bot si ritroverebbe i token nel wallet
+   senza sapere a quanto li ha comprati, quindi senza stop loss.
 4. **Environment Variables**: almeno `OPENROUTER_API_KEY`, `WALLET_ADDRESS`,
    `PRIVATE_KEY`, `BASE_RPC_URL`. Lascia `DRY_RUN=true` per i primi cicli.
    Le chiavi vanno qui, non nel repo: il `.env` è escluso dall'immagine.

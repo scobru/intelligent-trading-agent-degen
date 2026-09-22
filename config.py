@@ -117,17 +117,22 @@ GOPLUS_TOKEN_SECURITY_URL = f"https://api.gopluslabs.io/api/v1/token_security/{C
 GECKOTERMINAL_BASE_URL = "https://api.geckoterminal.com/api/v2"
 HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
 
-def default_db_path() -> str:
+def persistent_path(filename: str) -> str:
     """
     Su CapRover/Docker /app/data e' la directory montata come volume
-    persistente: metterci il database evita di perdere lo storico a ogni
-    redeploy. In locale resta accanto al codice.
+    persistente: i file di stato vanno li', altrimenti a ogni redeploy si
+    perdono storico e prezzi di carico. In locale restano accanto al codice.
     """
     project_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(project_dir, "data")
     if os.path.isdir(data_dir) and os.access(data_dir, os.W_OK):
-        return os.path.join(data_dir, "trading_agent.db")
-    return os.path.join(project_dir, "trading_agent.db")
+        return os.path.join(data_dir, filename)
+    return os.path.join(project_dir, filename)
+
+
+def default_db_path() -> str:
+    return persistent_path("trading_agent.db")
 
 
 SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH") or default_db_path()
+POSITIONS_PATH = os.getenv("POSITIONS_PATH") or persistent_path("positions.json")
