@@ -13,9 +13,9 @@ from typing import Any, Dict, List, Optional
 
 import ccxt
 import pandas as pd
-import requests
 
 import config
+import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 CEX_SYMBOLS = {"ETH": "ETH", "WETH": "ETH", "BTC": "BTC", "CBBTC": "BTC", "SOL": "SOL"}
 
 EXCHANGE_CANDIDATES = (("binance", "USDT"), ("kraken", "USD"), ("coinbase", "USD"), ("okx", "USDT"))
+
+# Quante candele si scaricano davvero, qualunque cosa chieda chi chiama
+CANONICAL_LIMITS = {"15m": 500, "1h": 500, "4h": 300, "1d": 200}
 
 GECKOTERMINAL_TIMEFRAMES = {
     "15m": ("minute", 15),
@@ -61,9 +64,18 @@ def _get_exchange(exchange_id: str):
     return _EXCHANGES[exchange_id]
 
 
+_CEX_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
 def _cex_ohlcv(cex_symbol: str, interval: str, limit: int) -> pd.DataFrame:
     global _PREFERRED_EXCHANGE
 
+    cache_key = f"{cex_symbol}:{interval}"
+    cached = _CEX_CACHE.get(cache_key)
+    if cached and (time.time() - cached["time"]) < config.OHLCV_CACHE_SECONDS:
+        return cached["df"].tail(limit).reset_index(drop=True)
+
+    canonical = max(limit, CANONICAL_LIMITS.get(interval, 500))
     candidates = list(EXCHANGE_CANDIDATES)
     if _PREFERRED_EXCHANGE:
         candidates.sort(key=lambda c: c[0] != _PREFERRED_EXCHANGE)
@@ -72,11 +84,13 @@ def _cex_ohlcv(cex_symbol: str, interval: str, limit: int) -> pd.DataFrame:
     for exchange_id, quote in candidates:
         try:
             raw = _get_exchange(exchange_id).fetch_ohlcv(
-                f"{cex_symbol}/{quote}", timeframe=interval, limit=limit
+                f"{cex_symbol}/{quote}", timeframe=interval, limit=canonical
             )
             if raw:
                 _PREFERRED_EXCHANGE = exchange_id
-                return _to_dataframe(raw, unit="ms")
+                df = _to_dataframe(raw, unit="ms")
+                _CEX_CACHE[cache_key] = {"time": time.time(), "df": df}
+                return df.tail(limit).reset_index(drop=True)
         except Exception as exc:
             errors.append(f"{exchange_id}: {type(exc).__name__}: {exc}")
 
@@ -84,15 +98,9 @@ def _cex_ohlcv(cex_symbol: str, interval: str, limit: int) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- DEX
-def _get_json(url: str, params: Dict[str, Any] = None) -> Optional[Any]:
-    try:
-        resp = requests.get(url, params=params, timeout=config.HTTP_TIMEOUT,
-                            headers={"accept": "application/json"})
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        logger.warning("Richiesta fallita %s: %s", url, exc)
-        return None
+def _get_json(url: str, params: Dict[str, Any] = None, cache_ttl: float = 0) -> Optional[Any]:
+    return http_client.get_json(url, params=params, timeout=config.HTTP_TIMEOUT,
+                                cache_ttl=cache_ttl)
 
 
 def get_pool_address(token_address: str) -> Optional[str]:
@@ -104,6 +112,7 @@ def get_pool_address(token_address: str) -> Optional[str]:
     data = _get_json(
         f"{config.GECKOTERMINAL_BASE_URL}/networks/base/tokens/{token_address}/pools",
         params={"page": 1},
+        cache_ttl=config.OHLCV_CACHE_SECONDS * 4,
     )
     pools = (data or {}).get("data") or []
     if not pools:
@@ -128,16 +137,22 @@ def _dex_ohlcv(token_address: str, interval: str, limit: int) -> pd.DataFrame:
         raise RuntimeError(f"Nessuna pool trovata su Base per {token_address}")
 
     timeframe, aggregate = GECKOTERMINAL_TIMEFRAMES.get(interval, ("minute", 15))
+    # Indicatori e Prophet chiedono lo stesso intervallo con limiti diversi:
+    # si scarica sempre il limite canonico, cosi' la seconda richiesta e'
+    # servita dalla cache invece di consumare il rate limit.
+    canonical = CANONICAL_LIMITS.get(interval, 500)
     data = _get_json(
         f"{config.GECKOTERMINAL_BASE_URL}/networks/base/pools/{pool}/ohlcv/{timeframe}",
-        params={"aggregate": aggregate, "limit": min(limit, 1000), "currency": "usd"},
+        params={"aggregate": aggregate, "limit": canonical, "currency": "usd"},
+        cache_ttl=config.OHLCV_CACHE_SECONDS,
     )
     ohlcv_list = (((data or {}).get("data") or {}).get("attributes") or {}).get("ohlcv_list")
     if not ohlcv_list:
         raise RuntimeError(f"Nessuna candela DEX per {token_address} ({interval})")
 
     # GeckoTerminal restituisce dal piu' recente e con timestamp in secondi
-    return _to_dataframe(list(reversed(ohlcv_list)), unit="s")
+    df = _to_dataframe(list(reversed(ohlcv_list)), unit="s")
+    return df.tail(limit).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------- comune

@@ -18,9 +18,8 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-import requests
-
 import config
+import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +31,9 @@ _CACHE: Dict[str, Any] = {
 }
 
 
-def _get_json(url: str, params: Dict[str, Any] = None) -> Optional[Any]:
-    try:
-        resp = requests.get(url, params=params, timeout=config.HTTP_TIMEOUT,
-                            headers={"accept": "application/json"})
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        logger.warning("Richiesta fallita %s: %s", url, exc)
-        return None
+def _get_json(url: str, params: Dict[str, Any] = None, cache_ttl: float = 0) -> Optional[Any]:
+    return http_client.get_json(url, params=params, timeout=config.HTTP_TIMEOUT,
+                                cache_ttl=cache_ttl)
 
 
 # ---------------------------------------------------------------- 2. CoinGecko
@@ -54,7 +47,7 @@ def coingecko_base_tokens(force: bool = False) -> Dict[str, Dict[str, Any]]:
     if not force and _CACHE["coingecko_list"] and age < 86_400:
         return _CACHE["coingecko_list"]
 
-    data = _get_json(config.COINGECKO_BASE_TOKENLIST)
+    data = _get_json(config.COINGECKO_BASE_TOKENLIST, cache_ttl=86_400)
     if not data or "tokens" not in data:
         logger.warning("Token list CoinGecko non disponibile")
         return _CACHE["coingecko_list"] or {}
@@ -88,7 +81,7 @@ def discover_candidates(limit: int = 60) -> List[str]:
     ]
 
     for url in endpoints:
-        data = _get_json(url, params={"page": 1})
+        data = _get_json(url, params={"page": 1}, cache_ttl=config.SCREEN_CACHE_SECONDS)
         if not data or "data" not in data:
             continue
         for pool in data["data"]:

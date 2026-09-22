@@ -116,6 +116,9 @@ DEXSCREENER_TOKENS_URL = "https://api.dexscreener.com/latest/dex/tokens/"
 GOPLUS_TOKEN_SECURITY_URL = f"https://api.gopluslabs.io/api/v1/token_security/{CHAIN_ID}"
 GECKOTERMINAL_BASE_URL = "https://api.geckoterminal.com/api/v2"
 HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
+# Quanto vale una serie di candele prima di riscaricarla. Con cicli da 15
+# minuti tenerle 10 minuti dimezza le chiamate senza invecchiare i dati.
+OHLCV_CACHE_SECONDS = _i("OHLCV_CACHE_SECONDS", 600)
 
 def persistent_path(filename: str) -> str:
     """
