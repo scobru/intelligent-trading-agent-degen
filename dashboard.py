@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PORT = int(os.getenv("DASHBOARD_PORT", os.getenv("PORT", "3000")))
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading_agent.db"))
+from config import SQLITE_DB_PATH  # stesso default del resto del bot
 
 # Asset statici serviti dalla dashboard (allowlist esplicita: nessun path
 # arbitrario arriva al filesystem)

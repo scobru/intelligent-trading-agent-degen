@@ -10,9 +10,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database path (default: trading_agent.db nella root del progetto)
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading_agent.db")
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", DEFAULT_DB_PATH)
+# Percorso del database: vedi config.default_db_path() per il comportamento
+# su volume persistente (CapRover/Docker)
+from config import SQLITE_DB_PATH, default_db_path
+
+DEFAULT_DB_PATH = default_db_path()
 
 
 # ==============================================================================

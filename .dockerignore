@@ -4,10 +4,8 @@
 *.db
 *.sqlite
 data/
-node_modules/
-synfutures-service/node_modules/
-synfutures-service/dist/
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+positions.json

@@ -80,11 +80,35 @@ python main.py           # un ciclo, in dry-run
 python dashboard.py      # dashboard su http://localhost:3000
 ```
 
-Con Docker / CapRover:
+Con Docker:
 
 ```bash
 docker compose up --build
 ```
+
+### Deploy su CapRover
+
+Il repo è pronto per CapRover: `captain-definition` in root, un solo
+processo, nessun servizio Node da buildare (a differenza del bot perp).
+
+1. **Crea l'app** e collega il repo (o `caprover deploy` dalla cartella).
+2. **App Configs → Container HTTP Port: `3000`.** CapRover di default
+   assume la 80: senza questo la dashboard non risponde.
+3. **Persistent Directories** → mappa `/app/data`. Il database SQLite ci
+   finisce da solo (`config.default_db_path()` usa `/app/data` quando esiste),
+   così storico, swap e screening sopravvivono ai redeploy. Senza questa
+   mappatura riparti da zero a ogni deploy.
+4. **Environment Variables**: almeno `OPENROUTER_API_KEY`, `WALLET_ADDRESS`,
+   `PRIVATE_KEY`, `BASE_RPC_URL`. Lascia `DRY_RUN=true` per i primi cicli.
+   Le chiavi vanno qui, non nel repo: il `.env` è escluso dall'immagine.
+5. **Enable HTTPS** se esponi la dashboard: non ha autenticazione, e da lì si
+   può lanciare un ciclo con "Esegui Ciclo Ora".
+
+Il build installa Prophet (qualche minuto, scarica un wheel precompilato con
+cmdstan). Su istanze da 1 GB di RAM conviene tenere d'occhio la memoria
+durante il primo build.
+
+L'intervallo fra i cicli è `TRADING_INTERVAL` (default 900s), come nel bot perp.
 
 **Parti sempre in dry-run.** Il ciclo gira completo e registra tutto, ma non
 firma nulla finché non metti `DRY_RUN=false`. Quando passi in live, usa un
