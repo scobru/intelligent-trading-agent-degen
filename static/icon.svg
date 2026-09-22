@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Intelligent Trading Agent">
+  <title>Intelligent Trading Agent</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sfondo -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="14" fill="url(#gloss)"/>
+
+  <!-- Traiettoria stimata dall'agente -->
+  <path d="M13 44 L32 34 L51 20" fill="none" stroke="#ffffff" stroke-opacity="0.35"
+        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Candela 1 -->
+  <g fill="#ffffff" fill-opacity="0.78">
+    <rect x="11.75" y="34" width="2.5" height="20" rx="1.25"/>
+    <rect x="8" y="38" width="10" height="12" rx="2"/>
+  </g>
+
+  <!-- Candela 2 -->
+  <g fill="#ffffff" fill-opacity="0.95">
+    <rect x="30.75" y="23" width="2.5" height="23" rx="1.25"/>
+    <rect x="27" y="27" width="10" height="15" rx="2"/>
+  </g>
+
+  <!-- Candela 3: lo slancio previsto -->
+  <g fill="#34d399">
+    <rect x="49.75" y="10" width="2.5" height="26" rx="1.25"/>
+    <rect x="46" y="14" width="10" height="18" rx="2"/>
+  </g>
+</svg>
