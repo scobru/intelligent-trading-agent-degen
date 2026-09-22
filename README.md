@@ -112,11 +112,44 @@ durante il primo build.
 
 L'intervallo fra i cicli è `TRADING_INTERVAL` (default 900s), come nel bot perp.
 
-**Parti sempre in dry-run.** Il ciclo gira completo e registra tutto, ma non
-firma nulla finché non metti `DRY_RUN=false`. Quando passi in live, usa un
+### Le tre modalità
+
+| Modalità | `.env` | Cosa succede |
+|---|---|---|
+| **Dry-run** (default) | `DRY_RUN=true` | Legge il wallet vero, decide, ma non firma. Se non hai USDC gli ordini vengono rifiutati dai limiti di rischio. |
+| **Paper trading** | `PAPER_TRADING=true` | Portafoglio virtuale (`PAPER_START_USDC`, default $1000) con **prezzi e rotte reali**: gli ordini vengono eseguiti contro il saldo finto, quindi vedi P&L, stop loss e take profit lavorare senza capitale sul wallet. Implica sempre il dry-run. |
+| **Live** | `DRY_RUN=false` | Firma e manda le transazioni. |
+
+In paper trading resta reale tutto tranne i saldi: quotazioni Uniswap,
+screening, limiti di rischio e decisioni del modello. Il riempimento sconta
+sempre lo slippage massimo, così la simulazione è pessimista invece che
+ottimista, e ogni swap addebita `PAPER_GAS_USD` di gas figurato.
+Lo stato vive in `paper_portfolio.json` sul volume persistente: per
+ricominciare da capo, cancella quel file.
+
+**Parti sempre in dry-run o paper.** Quando passi in live, usa un
 wallet dedicato con dentro solo quello che puoi perdere.
 
 ---
+
+## 🎯 Seguire un token specifico
+
+L'universo si costruisce da solo dai token più scambiati su Base, ma puoi
+aggiungerne di tuoi senza toccare il codice:
+
+```bash
+# valutato a ogni ciclo, anche se non è fra i più scambiati del momento
+TOKEN_WATCHLIST="0xIndirizzoDelToken"
+
+# se non è nella token list CoinGecko di Base, marcalo come verificato da te:
+# salta QUEL requisito, non i controlli di liquidità e di contratto
+TOKEN_TRUSTED="0xIndirizzoDelToken"
+```
+
+L'indirizzo va preso da una fonte che controlli tu (sito ufficiale del
+progetto, BaseScan, CoinGecko): copiare un contratto sbagliato è esattamente
+il modo in cui si compra un clone-scam, e nessuno screening può salvarti da
+un indirizzo che gli hai dato tu come buono.
 
 ## 📁 Struttura
 
@@ -130,6 +163,8 @@ wallet dedicato con dentro solo quello che puoi perdere.
 | `wallet.py` | portafoglio on-chain, prezzo di carico, uscite di rischio |
 | `spot_trader.py` | traduzione del segnale in swap, limiti di rischio |
 | `market_data.py` | candele: CEX per i major, pool Base per le meme |
+| `http_client.py` | pacing, retry e cache per le API pubbliche |
+| `paper.py` | portafoglio virtuale per il paper trading |
 | `indicators.py` | analisi tecnica |
 | `forecaster.py` | previsioni Prophet 15m e 1h |
 | `trading_agent.py` | chiamata LLM, schema JSON, fallback di sicurezza |

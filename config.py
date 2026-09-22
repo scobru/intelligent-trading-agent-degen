@@ -69,6 +69,18 @@ BASE_CURRENCY = "USDC"
 # Di default NON firma nulla: mettere DRY_RUN=false per operare davvero.
 DRY_RUN = _b("DRY_RUN", True)
 
+# Paper trading: portafoglio virtuale, prezzi e rotte reali. Gli ordini
+# vengono "eseguiti" contro un saldo finto, cosi' si vede la strategia
+# lavorare senza capitale sul wallet. Implica sempre DRY_RUN.
+PAPER_TRADING = _b("PAPER_TRADING", False)
+PAPER_START_USDC = _f("PAPER_START_USDC", 1000.0)
+PAPER_START_ETH = _f("PAPER_START_ETH", 0.05)
+# Costo del gas simulato per swap, in USD
+PAPER_GAS_USD = _f("PAPER_GAS_USD", 0.02)
+
+if PAPER_TRADING:
+    DRY_RUN = True
+
 # Riserva di ETH da non spendere mai, serve per il gas
 MIN_ETH_RESERVE = _f("MIN_ETH_RESERVE", 0.0015)
 
@@ -100,6 +112,22 @@ SCREEN_CACHE_SECONDS = _i("SCREEN_CACHE_SECONDS", 1800)
 TOKEN_BLOCKLIST = {
     a.strip().lower()
     for a in os.getenv("TOKEN_BLOCKLIST", "").split(",")
+    if a.strip()
+}
+
+# Token sempre valutati a ogni ciclo, anche se non emergono dalla scoperta.
+# Passano gli stessi filtri di tutti gli altri.
+TOKEN_WATCHLIST = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_WATCHLIST", "").split(",")
+    if a.strip()
+}
+
+# Indirizzi verificati a mano dall'operatore: saltano il requisito "presente
+# nella token list CoinGecko", ma NON i controlli di mercato e di contratto.
+TOKEN_TRUSTED = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_TRUSTED", "").split(",")
     if a.strip()
 }
 

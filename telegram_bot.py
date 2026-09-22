@@ -86,7 +86,10 @@ def notify_cycle_result(
         action_title,
     ]
 
-    if account_status and account_status.get("dry_run"):
+    if account_status and account_status.get("paper_trading"):
+        pnl = account_status.get("pnl_since_start_usd", 0.0)
+        lines.append(f"📝 <i>PAPER TRADING — P&L strategia ${pnl:+.2f}</i>")
+    elif account_status and account_status.get("dry_run"):
         lines.append("🧪 <i>DRY-RUN: nessuna transazione firmata</i>")
 
     if op in ("BUY", "SELL"):

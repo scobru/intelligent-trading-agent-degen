@@ -43,7 +43,10 @@ def _assets_to_analyze(universe, holdings):
 
 def run_cycle():
     print(f"🚀 Avvio Degen Trading Agent su Base (wallet: {config.WALLET_ADDRESS})")
-    if config.DRY_RUN:
+    if config.PAPER_TRADING:
+        print(f"📝 PAPER TRADING: portafoglio virtuale, prezzi e rotte reali. "
+              f"Capitale iniziale ${config.PAPER_START_USDC:.2f}.")
+    elif config.DRY_RUN:
         print("🧪 DRY-RUN attivo: nessuna transazione verra' firmata.")
 
     client = BaseClient()
@@ -78,6 +81,11 @@ def run_cycle():
     print(f"   Valore totale: ${account_status['total_value_usd']:.2f} "
           f"(USDC ${account_status['usdc_balance']:.2f}, "
           f"{len(account_status['open_positions'])} token)")
+    if account_status.get("paper_trading"):
+        pnl = account_status.get("pnl_since_start_usd", 0.0)
+        paper = account_status.get("paper", {})
+        print(f"   [paper] P&L strategia: ${pnl:+.2f} su ${paper.get('initial_usdc', 0):.2f} "
+              f"iniziali, {paper.get('trades', 0)} swap simulati")
 
     # 3. Stop loss e take profit: si eseguono prima di sentire il modello
     risk_exits = trader.portfolio.risk_exits(account_status)
@@ -155,7 +163,7 @@ def run_cycle():
             forecasts=forecasts_json,
         )
         print(f"[db_utils] Operazione inserita con id={op_id}")
-        if execution_result.get("status") not in ("hold", "rejected"):
+        if execution_result.get("status") not in ("hold", "rejected"):  # include "paper"
             db_utils.log_swap(execution_result)
     except Exception as db_err:
         print(f"[db_utils] Nota DB operazione non salvata: {db_err}")

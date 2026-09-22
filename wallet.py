@@ -134,6 +134,77 @@ class Portfolio:
         return list(addresses)
 
     def snapshot(self, universe: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+        if config.PAPER_TRADING:
+            return self.paper_snapshot(universe or [])
+        return self.onchain_snapshot(universe or [])
+
+    def paper_snapshot(self, universe: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Stessi campi dello snapshot reale, ma con i saldi virtuali."""
+        from paper import PaperWallet
+
+        paper = getattr(self, "_paper", None) or PaperWallet()
+        self._paper = paper
+
+        prices_hint = {t["address"].lower(): t.get("price_usd") for t in universe}
+        eth_price = self._price_usd(config.WETH) or 0.0
+
+        holdings: List[Dict[str, Any]] = []
+        tokens_value = 0.0
+
+        for address, holding in list(paper.tokens().items()):
+            amount = float(holding.get("amount", 0.0))
+            if amount <= 0:
+                continue
+
+            price = self._price_usd(address, prices_hint.get(address))
+            value_usd = (price or 0.0) * amount
+
+            position = self.store.get(address)
+            entry_price = float(position.get("entry_price", 0.0))
+            pnl_percent = None
+            if entry_price and price:
+                pnl_percent = ((price - entry_price) / entry_price) * 100
+
+            holdings.append({
+                "symbol": holding.get("symbol", "?"),
+                "address": address,
+                "amount": amount,
+                "price_usd": price,
+                "value_usd": value_usd,
+                "entry_price": entry_price or None,
+                "cost_usd": float(position.get("cost_usd", 0.0)) or None,
+                "pnl_percent": pnl_percent,
+                "stop_loss_percent": position.get("stop_loss_percent"),
+                "take_profit_percent": position.get("take_profit_percent"),
+                "held_since": position.get("first_buy_at"),
+            })
+            tokens_value += value_usd
+
+        holdings.sort(key=lambda h: h["value_usd"], reverse=True)
+        eth_value = paper.eth * eth_price
+        total = paper.usdc + tokens_value + eth_value
+
+        summary = paper.summary()
+        return {
+            "wallet": self.client.address,
+            "dry_run": True,
+            "paper_trading": True,
+            "paper": summary,
+            "eth_balance": paper.eth,
+            "eth_price_usd": eth_price,
+            "eth_value_usd": eth_value,
+            "usdc_balance": paper.usdc,
+            "tokens_value_usd": tokens_value,
+            "total_value_usd": total,
+            "open_positions": holdings,
+            "free_capital_usd": paper.usdc,
+            # P&L della sola strategia: l'ETH iniziale e' valutato al prezzo
+            # corrente, cosi' il movimento di ETH non viene contato come merito
+            # o colpa del bot
+            "pnl_since_start_usd": total - (summary["initial_usdc"] + paper.eth * eth_price),
+        }
+
+    def onchain_snapshot(self, universe: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         universe = universe or []
         prices_hint = {t["address"].lower(): t.get("price_usd") for t in universe}
 

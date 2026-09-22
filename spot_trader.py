@@ -107,7 +107,7 @@ class SpotTrader:
                 f"Gia' {len(distinct)} posizioni aperte, il massimo e' {config.MAX_OPEN_TOKENS}"
             )
 
-        if snapshot["eth_balance"] < config.MIN_ETH_RESERVE:
+        if not config.PAPER_TRADING and snapshot["eth_balance"] < config.MIN_ETH_RESERVE:
             raise RiskRejection(
                 f"ETH per il gas insufficiente: {snapshot['eth_balance']:.5f} "
                 f"< riserva minima {config.MIN_ETH_RESERVE}"
@@ -142,7 +142,15 @@ class SpotTrader:
         token_decimals = self.client.decimals(token["address"])
         expected_tokens = route.amount_out / (10 ** token_decimals)
 
-        result = self.uniswap.swap(route, slippage_bps)
+        if config.PAPER_TRADING:
+            result = self._paper_fill("buy", token, route, slippage_bps,
+                                      usd_amount, expected_tokens)
+            # il riempimento simulato sconta lo slippage: e' quello il numero
+            # da registrare, non la quotazione piena
+            expected_tokens = result["expected_tokens"]
+        else:
+            result = self.uniswap.swap(route, slippage_bps)
+
         result.update({
             "operation": "buy",
             "symbol": token["symbol"],
@@ -152,8 +160,9 @@ class SpotTrader:
             "route_description": route.describe(self.client),
         })
 
-        # In dry-run il registro non si tocca: non possediamo nulla di nuovo.
-        if result.get("status") == "success":
+        # In dry-run puro il registro non si tocca: non possediamo nulla di
+        # nuovo. In paper trading invece la posizione virtuale esiste davvero.
+        if result.get("status") in ("success", "paper"):
             self.store.record_buy(
                 token["address"], token["symbol"], expected_tokens, usd_amount,
                 stop_loss_percent, take_profit_percent,
@@ -174,7 +183,12 @@ class SpotTrader:
             raise RiskRejection(f"Nessuna posizione aperta su {token['symbol']}")
 
         token_decimals = self.client.decimals(token["address"])
-        raw_balance = self.client.balance_of(token["address"])
+        if config.PAPER_TRADING:
+            # in paper trading la posizione vive nel portafoglio virtuale:
+            # on-chain quel token non lo possediamo affatto
+            raw_balance = int(self.paper.token_amount(token["address"]) * (10 ** token_decimals))
+        else:
+            raw_balance = self.client.balance_of(token["address"])
         amount_in = int(raw_balance * portion)
         if amount_in <= 0:
             raise RiskRejection(f"Quantita' da vendere nulla per {token['symbol']}")
@@ -195,7 +209,13 @@ class SpotTrader:
         usdc_decimals = self.client.decimals(config.USDC)
         expected_usd = route.amount_out / (10 ** usdc_decimals)
 
-        result = self.uniswap.swap(route, slippage_bps)
+        if config.PAPER_TRADING:
+            result = self._paper_fill("sell", token, route, slippage_bps,
+                                      expected_usd, amount_in / (10 ** token_decimals))
+            expected_usd = result["expected_usd"]
+        else:
+            result = self.uniswap.swap(route, slippage_bps)
+
         result.update({
             "operation": "sell",
             "symbol": token["symbol"],
@@ -206,10 +226,56 @@ class SpotTrader:
             "route_description": route.describe(self.client),
         })
 
-        if result.get("status") == "success":
+        if result.get("status") in ("success", "paper"):
             self.store.record_sell(
                 token["address"], amount_in / (10 ** token_decimals), expected_usd
             )
+        return result
+
+    # ------------------------------------------------------------ paper trading
+    @property
+    def paper(self):
+        """Portafoglio virtuale, condiviso con lo snapshot del portafoglio."""
+        from paper import PaperWallet
+
+        existing = getattr(self.portfolio, "_paper", None)
+        if existing is None:
+            existing = PaperWallet()
+            self.portfolio._paper = existing
+        return existing
+
+    def _paper_fill(self, side: str, token: Dict[str, Any], route, slippage_bps: int,
+                    usd_amount: float, token_amount: float) -> Dict[str, Any]:
+        """
+        Esegue l'ordine contro il saldo virtuale, al prezzo che la rotta ha
+        realmente quotato. Il riempimento sconta lo slippage massimo: meglio
+        una simulazione pessimista di una ottimista.
+        """
+        slippage_factor = (10_000 - slippage_bps) / 10_000
+
+        try:
+            if side == "buy":
+                filled_tokens = token_amount * slippage_factor
+                self.paper.buy(token["address"], token["symbol"], usd_amount,
+                               filled_tokens, config.PAPER_GAS_USD)
+                filled = {"expected_tokens": filled_tokens}
+            else:
+                filled_usd = usd_amount * slippage_factor
+                self.paper.sell(token["address"], token_amount, filled_usd,
+                                config.PAPER_GAS_USD)
+                filled = {"expected_usd": filled_usd}
+        except ValueError as exc:
+            raise RiskRejection(str(exc)) from exc
+
+        result = {
+            "status": "paper",
+            "description": f"swap simulato {route.describe(self.client)}",
+            "route": route.to_dict(),
+            "slippage_bps": slippage_bps,
+            "gas_usd": config.PAPER_GAS_USD,
+            "paper_balances": self.paper.summary(),
+        }
+        result.update(filled)
         return result
 
     # ------------------------------------------------------------ segnale LLM

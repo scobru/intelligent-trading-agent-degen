@@ -685,8 +685,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 document.getElementById('balance').textContent = '$' + currentBalanceVal.toFixed(2);
                 const usdc = data.usdc_balance || 0;
                 const eth = data.eth_balance || 0;
+                const modeTag = data.paper_trading ? ' • PAPER' : (data.dry_run ? ' • DRY-RUN' : '');
                 document.getElementById('balance-breakdown').textContent =
-                    `USDC $${usdc.toFixed(2)} • ETH ${eth.toFixed(4)}` + (data.dry_run ? ' • DRY-RUN' : '');
+                    `USDC $${usdc.toFixed(2)} • ETH ${eth.toFixed(4)}` + modeTag;
                 document.getElementById('open-positions-count').textContent = data.positions ? data.positions.length : 0;
                 
                 // 1. Sentiment Fear & Greed Rendering
@@ -867,7 +868,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (data.swaps && data.swaps.length > 0) {
                     swapsTable.innerHTML = data.swaps.map(s => {
                         const statusClass = s.status === 'success' ? 'badge-long'
-                            : (s.status === 'dry_run' ? 'badge-neutral' : 'badge-short');
+                            : (s.status === 'dry_run' || s.status === 'paper' ? 'badge-neutral' : 'badge-short');
                         const link = s.explorer_url
                             ? `<a href="${s.explorer_url}" target="_blank" style="color: var(--primary);">${s.status}</a>`
                             : `<span class="badge ${statusClass}">${s.status || '--'}</span>`;
@@ -962,6 +963,8 @@ def get_db_data():
         "forecasts": [],
         "screening": [],
         "swaps": [],
+        "paper_trading": False,
+        "paper": None,
         "news": [],
         "operations": [],
         "balance_history": [],
@@ -985,6 +988,13 @@ def get_db_data():
             data["eth_balance"] = snap["eth_balance"]
             data["tokens_value_usd"] = snap["tokens_value_usd"]
             data["dry_run"] = bool(snap["dry_run"])
+            try:
+                payload = json.loads(snap["raw_payload"] or "{}")
+            except (TypeError, ValueError):
+                payload = {}
+            data["paper_trading"] = bool(payload.get("paper_trading"))
+            data["paper"] = payload.get("paper")
+            data["pnl_since_start_usd"] = payload.get("pnl_since_start_usd")
             snapshot_id = snap["id"]
 
             # Posizioni associate

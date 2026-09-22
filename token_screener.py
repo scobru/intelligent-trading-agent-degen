@@ -99,17 +99,23 @@ def discover_candidates(limit: int = 60) -> List[str]:
 
 
 # ---------------------------------------------------------------- 3. DexScreener
+# DexScreener accetta fino a 30 indirizzi, ma tronca la RISPOSTA a 30 pair:
+# ogni token ne ha diverse, quindi con lotti grandi gli ultimi token tornano
+# vuoti e sembrano "senza pool". Lotti piccoli, cosi' ci stanno tutti.
+DEXSCREENER_CHUNK = 5
+GOPLUS_CHUNK = 5
+
+
 def dexscreener_metrics(addresses: List[str]) -> Dict[str, Dict[str, Any]]:
-    """
-    Metriche di mercato per indirizzo: si tiene la pool piu' liquida di ognuno.
-    DexScreener accetta fino a 30 indirizzi per chiamata.
-    """
+    """Metriche di mercato per indirizzo: si tiene la pool piu' liquida di ognuno."""
     metrics: Dict[str, Dict[str, Any]] = {}
 
-    for i in range(0, len(addresses), 30):
-        chunk = addresses[i:i + 30]
-        data = _get_json(config.DEXSCREENER_TOKENS_URL + ",".join(chunk))
+    for i in range(0, len(addresses), DEXSCREENER_CHUNK):
+        chunk = addresses[i:i + DEXSCREENER_CHUNK]
+        data = _get_json(config.DEXSCREENER_TOKENS_URL + ",".join(chunk),
+                         cache_ttl=config.SCREEN_CACHE_SECONDS)
         if not data:
+            logger.warning("DexScreener non ha risposto per %s indirizzi", len(chunk))
             continue
 
         for pair in (data.get("pairs") or []):
@@ -150,18 +156,43 @@ def dexscreener_metrics(addresses: List[str]) -> Dict[str, Dict[str, Any]]:
 def goplus_security(addresses: List[str]) -> Dict[str, Dict[str, Any]]:
     """Analisi del contratto: honeypot, tasse, permessi dell'owner."""
     security: Dict[str, Dict[str, Any]] = {}
+    if not addresses:
+        return security
 
-    for i in range(0, len(addresses), 20):
-        chunk = addresses[i:i + 20]
+    for i in range(0, len(addresses), GOPLUS_CHUNK):
+        chunk = addresses[i:i + GOPLUS_CHUNK]
         data = _get_json(
             config.GOPLUS_TOKEN_SECURITY_URL,
             params={"contract_addresses": ",".join(chunk)},
+            cache_ttl=config.SCREEN_CACHE_SECONDS,
         )
-        if not data or data.get("code") != 1:
+        if not data:
+            logger.warning("GoPlus non ha risposto per %s indirizzi", len(chunk))
             continue
-        for addr, raw in (data.get("result") or {}).items():
-            security[addr.lower()] = raw
 
+        # code 1 = tutto ok, code 2 = risposta parziale (alcuni token non
+        # ancora indicizzati). Scartare il 2 buttava via anche i dati buoni
+        # dello stesso lotto: e' il motivo per cui in dashboard comparivano
+        # righe "nessun dato di sicurezza disponibile" quasi ovunque.
+        code = data.get("code")
+        if code not in (1, 2):
+            logger.warning("GoPlus ha risposto code=%s (%s) per %s indirizzi",
+                           code, data.get("message"), len(chunk))
+            continue
+
+        result = data.get("result") or {}
+        for addr, raw in result.items():
+            if raw:
+                security[addr.lower()] = raw
+
+        if code == 2:
+            logger.info("GoPlus: risposta parziale, %s token su %s del lotto",
+                        len(result), len(chunk))
+
+    missing = [a for a in addresses if a not in security]
+    if missing:
+        logger.info("GoPlus: nessun dato per %s token su %s (non ancora indicizzati)",
+                    len(missing), len(addresses))
     return security
 
 
@@ -249,60 +280,84 @@ def evaluate_market(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- pipeline
 def screen_addresses(addresses: List[str]) -> List[Dict[str, Any]]:
-    """Applica tutti i filtri a una lista di indirizzi, con i motivi di scarto."""
+    """
+    Applica i filtri in cascata, conservando i motivi di scarto.
+
+    L'ordine conta: i filtri economici prima (lista CoinGecko, gia' in cache),
+    poi il mercato, e solo sui sopravvissuti l'analisi del contratto — che e'
+    la chiamata piu' costosa e la piu' soggetta a rate limit.
+    """
     addresses = [a.lower() for a in addresses if a]
     if not addresses:
         return []
 
     listed = coingecko_base_tokens()
-    metrics = dexscreener_metrics(addresses)
-    security = goplus_security(addresses)
 
-    results = []
+    results: List[Dict[str, Any]] = []
+    survivors: List[str] = []
+    by_address: Dict[str, Dict[str, Any]] = {}
+
+    # --- stadio 1: blocklist/allowlist e presenza su CoinGecko
     for addr in addresses:
-        entry: Dict[str, Any] = {
-            "address": addr,
-            "symbol": (metrics.get(addr) or {}).get("symbol")
-            or (listed.get(addr) or {}).get("symbol", "?"),
-            "approved": False,
-            "reasons": [],
-        }
+        entry: Dict[str, Any] = {"address": addr, "symbol": "?", "approved": False, "reasons": []}
+        by_address[addr] = entry
+        results.append(entry)
 
         if addr in config.TOKEN_BLOCKLIST:
             entry["reasons"].append("in blocklist locale")
-            results.append(entry)
             continue
 
         if config.TOKEN_ALLOWLIST and addr not in config.TOKEN_ALLOWLIST:
             entry["reasons"].append("non in allowlist locale")
-            results.append(entry)
             continue
 
         cg = listed.get(addr)
-        if not cg:
+        if cg:
+            entry["name"] = cg.get("name")
+            entry["decimals"] = cg.get("decimals", 18)
+            entry["symbol"] = cg.get("symbol", "?")
+        elif addr in config.TOKEN_TRUSTED:
+            # indirizzo che l'operatore ha verificato a mano: salta il
+            # requisito CoinGecko, non i controlli di mercato e contratto
+            entry["trusted"] = True
+        else:
             entry["reasons"].append("non presente nella token list CoinGecko di Base")
-            results.append(entry)
             continue
-        entry["name"] = cg.get("name")
-        entry["decimals"] = cg.get("decimals", 18)
-        entry["symbol"] = cg.get("symbol", entry["symbol"])
 
+        survivors.append(addr)
+
+    # --- stadio 2: mercato
+    metrics = dexscreener_metrics(survivors)
+    market_survivors: List[str] = []
+
+    for addr in survivors:
+        entry = by_address[addr]
         market = metrics.get(addr)
         if not market:
             entry["reasons"].append("nessuna pool trovata su DexScreener")
-            results.append(entry)
             continue
-        entry.update({k: v for k, v in market.items() if k not in ("symbol", "address")})
+
+        entry.update({k: v for k, v in market.items() if k != "address"})
+        if not entry.get("symbol") or entry["symbol"] == "?":
+            entry["symbol"] = market.get("symbol", "?")
 
         market_verdict = evaluate_market(market)
         entry["reasons"].extend(market_verdict["reasons"])
+        market_survivors.append(addr)
 
+    # --- stadio 3: contratto, solo su chi ha superato il mercato
+    passed_market = [a for a in market_survivors if not by_address[a]["reasons"]]
+    security = goplus_security(passed_market)
+
+    for addr in passed_market:
+        entry = by_address[addr]
         sec_verdict = evaluate_security(security.get(addr))
         entry["security"] = sec_verdict
         entry["reasons"].extend(sec_verdict["reasons"])
 
+    for addr in addresses:
+        entry = by_address[addr]
         entry["approved"] = not entry["reasons"]
-        results.append(entry)
 
     return results
 
@@ -318,6 +373,10 @@ def get_universe(force: bool = False) -> List[Dict[str, Any]]:
         return _CACHE["universe"]
 
     candidates = discover_candidates()
+    # La watchlist entra sempre, anche se il token non e' fra i piu' scambiati
+    # del momento: passa comunque tutti i filtri come gli altri.
+    if config.TOKEN_WATCHLIST:
+        candidates = list(dict.fromkeys([*config.TOKEN_WATCHLIST, *candidates]))
     if config.TOKEN_ALLOWLIST:
         candidates = list({*candidates, *config.TOKEN_ALLOWLIST})
 
