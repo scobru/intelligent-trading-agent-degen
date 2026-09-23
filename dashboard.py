@@ -31,6 +31,9 @@ from config import SQLITE_DB_PATH  # noqa: E402
 
 RUN_TOKEN = os.getenv("DASHBOARD_RUN_TOKEN", "")
 PAPER_TRADING = config.PAPER_TRADING
+# Sotto MIN_ETH_RESERVE il bot smette di comprare; sotto GAS_WARN_ETH la
+# dashboard e Telegram chiedono di ricaricare il wallet
+GAS_WARN_ETH = float(os.getenv("GAS_WARN_ETH", str(config.MIN_ETH_RESERVE * 2)))
 
 # Asset statici serviti dalla dashboard (allowlist esplicita: nessun path
 # arbitrario arriva al filesystem)
@@ -70,11 +73,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="theme-color" content="#f97316">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/dashboard.css?v=2">
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
 <style>:root { --primary: #f97316; --accent: #db2777; }</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://s3.tradingview.com/tv.js"></script>
-<script src="/static/dashboard.js?v=2"></script>
+<script src="/static/dashboard.js?v=3"></script>
 </head>
 <body>
 <header class="header">
@@ -95,6 +98,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="card-head"><h2>📝 Paper trading <small>portafoglio virtuale, prezzi e rotte reali</small></h2></div>
   <div class="paper-grid" id="paper-grid"></div>
   <p class="note" id="paper-note"></p>
+</section>
+
+<section class="card wallet-bar" id="wallet-panel" hidden>
+  <div class="wallet-items" id="wallet-items"></div>
+  <p class="note" id="wallet-note" hidden></p>
 </section>
 
 <section class="stats">
@@ -424,6 +432,17 @@ def get_db_data():
             data["meta"]["updated_at"] = snap["created_at"]
             if mode == "paper":
                 data["meta"]["paper"] = _paper_meta(payload)
+            if snap["eth_balance"] is not None:
+                eth = float(snap["eth_balance"])
+                eth_px = payload.get("eth_price_usd")
+                data["meta"]["wallet"] = {
+                    "address": payload.get("wallet"),
+                    "eth": eth,
+                    "eth_usd": eth * float(eth_px) if eth_px else None,
+                    "min_eth": config.MIN_ETH_RESERVE,
+                    "warn_eth": GAS_WARN_ETH,
+                    "extra": [["USDC nel wallet", f"${float(snap['usdc_balance'] or 0):,.2f}"]],
+                }
             snapshot_id = snap["id"]
 
             # Posizioni associate
