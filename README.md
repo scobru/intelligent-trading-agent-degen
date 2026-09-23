@@ -103,8 +103,9 @@ processo, nessun servizio Node da buildare (a differenza del bot perp).
 4. **Environment Variables**: almeno `OPENROUTER_API_KEY`, `WALLET_ADDRESS`,
    `PRIVATE_KEY`, `BASE_RPC_URL`. Lascia `DRY_RUN=true` per i primi cicli.
    Le chiavi vanno qui, non nel repo: il `.env` è escluso dall'immagine.
-5. **Enable HTTPS** se esponi la dashboard: non ha autenticazione, e da lì si
-   può lanciare un ciclo con "Esegui Ciclo Ora".
+5. **Enable HTTPS** se esponi la dashboard: non ha autenticazione. Il
+   pulsante "Esegui ciclo ora" resta disattivato finché non imposti
+   `DASHBOARD_RUN_TOKEN` (il browser lo chiede una volta e lo ricorda).
 
 Il build installa Prophet (qualche minuto, scarica un wheel precompilato con
 cmdstan). Su istanze da 1 GB di RAM conviene tenere d'occhio la memoria
@@ -170,7 +171,21 @@ un indirizzo che gli hai dato tu come buono.
 | `trading_agent.py` | chiamata LLM, schema JSON, fallback di sicurezza |
 | `db_utils.py` | persistenza SQLite (snapshot, swap, screening, errori) |
 | `dashboard.py` | dashboard web |
+| `static/dashboard.css`, `static/dashboard.js` | design system condiviso con i bot fratelli |
 | `telegram_bot.py` | notifiche e comandi |
+
+---
+
+### Dashboard coerente fra i tre agenti
+
+Le dashboard di `intelligent-trading-agent`, `-degen` e `-yield` condividono lo
+stesso design system: `static/dashboard.css` e `static/dashboard.js` sono
+**identici nei tre repository** (se li modifichi, copiali negli altri due).
+Ogni pagina ha la stessa struttura: header con badge di modalità
+(`LIVE` / `PAPER` / `DRY-RUN`), pannello paper trading, KPI, andamento del
+capitale, posizioni e ultima decisione AI, sezioni specifiche del bot, storico
+operazioni ed errori. Cambia solo il colore d'accento (blu, arancio, verde)
+e l'icona.
 
 ---
 
