@@ -92,6 +92,13 @@ def notify_cycle_result(
     elif account_status and account_status.get("dry_run"):
         lines.append("🧪 <i>DRY-RUN: nessuna transazione firmata</i>")
 
+    if account_status and not account_status.get("paper_trading") and account_status.get("eth_balance") is not None:
+        import config  # locale: il listener Telegram non deve dipendere dal config all'import
+        eth = float(account_status["eth_balance"])
+        warn = float(os.getenv("GAS_WARN_ETH", str(config.MIN_ETH_RESERVE * 2)))
+        if eth < warn:
+            lines.append(f"⛽ <b>ETH per il gas: {eth:.5f}</b> ⚠️ ricarica il wallet")
+
     if op in ("BUY", "SELL"):
         if op == "BUY":
             lines.append(f"📊 <b>Allocazione:</b> {float(portion) * 100:.1f}% del portafoglio")
