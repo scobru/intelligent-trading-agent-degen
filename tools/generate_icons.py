@@ -11,7 +11,7 @@ Uso:
     python tools/generate_icons.py
 
 Sorgenti:
-  - static/icon.svg        icona principale (tre candele + traiettoria)
+  - static/icon.svg        icona principale (fiamma su arancio-magenta)
   - static/icon-small.svg  variante semplificata, leggibile a 16 e 32 px
 """
 
