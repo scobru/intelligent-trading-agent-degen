@@ -32,6 +32,16 @@ class SpotTrader:
         self.portfolio = portfolio or Portfolio(self.client, self.uniswap, self.store)
         self._universe: List[Dict[str, Any]] = []
 
+    # ------------------------------------------------------------ auto-refuel
+    def ensure_usdc_balance(self) -> Optional[Dict[str, Any]]:
+        """
+        Se in modalita' on-chain e il saldo USDC e' insufficiente,
+        ma c'e' ETH spendibile oltre la riserva gas, effettua l'auto-refuel.
+        """
+        if config.PAPER_TRADING or not self.client:
+            return None
+        return self.uniswap.auto_refuel_usdc()
+
     # ------------------------------------------------------------ stato
     def set_universe(self, universe: List[Dict[str, Any]]):
         self._universe = universe or []

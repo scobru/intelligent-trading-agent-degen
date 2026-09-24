@@ -131,6 +131,19 @@ ricominciare da capo, cancella quel file.
 **Parti sempre in dry-run o paper.** Quando passi in live, usa un
 wallet dedicato con dentro solo quello che puoi perdere.
 
+### ⛽ Rifornimento Automatico (Auto-Refuel ETH -> USDC)
+
+Se il wallet ha USDC insufficienti (< `USDC_AUTO_SWAP_THRESHOLD`, default $5.0) ma possiede ETH nativo, l'agente converte in automatico l'ETH in eccesso in USDC tramite Uniswap V3 all'inizio del ciclo, riservando sempre l'ETH per pagare le fee (`ETH_GAS_RESERVE`, default 0.003 ETH).
+In questo modo è sufficiente inviare solo ETH al wallet per rendere il bot operativo, senza dover inviare separatamente anche USDC.
+
+```bash
+# Controllo rapido o esecuzione manuale refuel
+python main.py --refuel
+
+# Ispezione saldi wallet con il tool dedicato
+python tools/refuel.py --status
+```
+
 ---
 
 ## 🎯 Seguire un token specifico

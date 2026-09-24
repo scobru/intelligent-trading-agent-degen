@@ -62,6 +62,14 @@ def run_cycle():
 
     trader = SpotTrader(client=client)
 
+    # 0. Auto-refuel USDC se il saldo e' sotto soglia ma c'e' ETH disponibile
+    try:
+        refuel_res = trader.ensure_usdc_balance()
+        if refuel_res:
+            print(f"⛽ Auto-refuel completato: {refuel_res.get('description', '')}")
+    except Exception as exc:
+        print(f"⚠️  Auto-refuel non riuscito (proseguo con saldo attuale): {exc}")
+
     # 1. Universo tradabile
     print("🕵️  Screening dei token su Base (CoinGecko + liquidita' + GoPlus)...")
     universe = token_screener.get_universe()
@@ -192,6 +200,13 @@ def run_cycle():
 
 
 if __name__ == "__main__":
+    if "--refuel" in sys.argv:
+        from tools.refuel import run_refuel_cli
+        from base_client import BaseClient
+        client = BaseClient()
+        run_refuel_cli(client)
+        sys.exit(0)
+
     if not config.WALLET_ADDRESS:
         raise RuntimeError("WALLET_ADDRESS mancante nel .env")
     if not os.getenv("OPENROUTER_API_KEY"):
