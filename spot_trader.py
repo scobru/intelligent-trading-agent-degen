@@ -344,3 +344,65 @@ class SpotTrader:
         except (RiskRejection, BaseChainError, Exception) as exc:
             return {"status": "error", "symbol": holding["symbol"], "trigger": reason,
                     "message": str(exc)}
+
+    def release_funds(self, target_usdc: float = 0.0) -> Dict[str, Any]:
+        """
+        Vende token dal portafoglio per liberare liquidita' USDC (usata dal Coordinator per il ribilanciamento).
+        Se target_usdc <= 0, liquida tutte le posizioni.
+        Altrimenti vende posizioni finche' l'USDC liberato non raggiunge almeno target_usdc.
+        """
+        snapshot = self.portfolio.snapshot()
+        holdings = list(snapshot.get("open_positions", []))
+        if not holdings:
+            current_usdc = float(snapshot.get("usdc_balance", 0.0))
+            return {
+                "status": "success",
+                "message": "Nessuna posizione aperta da liquidare",
+                "released_usd": 0.0,
+                "usdc_balance": current_usdc,
+                "trades": []
+            }
+
+        executed_trades = []
+        total_freed = 0.0
+        # Ordina per valore decrescente per minimizzare il numero di transazioni
+        holdings.sort(key=lambda h: float(h.get("value_usd", 0.0)), reverse=True)
+
+        for h in holdings:
+            if target_usdc > 0 and total_freed >= target_usdc:
+                break
+
+            token = {"address": h["address"], "symbol": h["symbol"]}
+            try:
+                needed = target_usdc - total_freed if target_usdc > 0 else 0.0
+                val = float(h.get("value_usd", 0.0))
+                portion = 1.0
+                if target_usdc > 0 and val > (needed * 1.1) and (needed >= config.MIN_TRADE_USD):
+                    portion = min(1.0, max(0.1, round(needed / val, 2)))
+
+                res = self.sell(token, portion=portion, slippage_bps=config.DEFAULT_SLIPPAGE_BPS)
+                if res.get("status") in ("success", "paper"):
+                    freed = float(res.get("expected_usd", 0.0))
+                    total_freed += freed
+                    executed_trades.append({
+                        "symbol": h["symbol"],
+                        "portion": portion,
+                        "freed_usd": freed,
+                        "tx_hash": res.get("tx_hash", "paper")
+                    })
+                else:
+                    logger.warning("Liquidazione non riuscita per %s: %s", h.get('symbol'), res)
+            except Exception as exc:
+                logger.error("Errore liquidazione token %s in release_funds: %s", h.get('symbol'), exc)
+
+        new_snapshot = self.portfolio.snapshot()
+        current_usdc = float(new_snapshot.get("usdc_balance", 0.0))
+        return {
+            "status": "success",
+            "released_usd": round(total_freed, 2),
+            "target_requested": target_usdc,
+            "trades": executed_trades,
+            "usdc_balance": round(current_usdc, 2),
+            "message": f"Liberati ${total_freed:.2f} USDC (saldo attuale: ${current_usdc:.2f})"
+        }
+

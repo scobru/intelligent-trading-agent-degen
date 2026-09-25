@@ -707,7 +707,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/run", "/api/pause", "/api/resume"):
+        if path not in ("/api/run", "/api/pause", "/api/resume", "/api/release_funds", "/api/liquidate"):
             self.send_response(404)
             self.end_headers()
             return
@@ -732,6 +732,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/resume":
             db_utils.set_bot_paused(False)
             self._json(200, {"status": "success", "is_paused": False, "message": "Bot riattivato con successo."})
+            return
+
+        if path in ("/api/release_funds", "/api/liquidate"):
+            target_amount = 0.0
+            try:
+                clen = int(self.headers.get("Content-Length", 0))
+                if clen > 0:
+                    body = json.loads(self.rfile.read(clen).decode("utf-8"))
+                    target_amount = float(body.get("amount_usd", 0.0) or body.get("amount", 0.0))
+            except Exception:
+                pass
+            try:
+                from base_client import BaseClient
+                from spot_trader import SpotTrader
+                client = BaseClient()
+                trader = SpotTrader(client=client)
+                res = trader.release_funds(target_usdc=target_amount)
+                self._json(200, res)
+            except Exception as exc:
+                self._json(500, {"status": "error", "message": str(exc)})
             return
 
         if path == "/api/run":

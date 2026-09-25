@@ -49,3 +49,28 @@ def test_market_data_register_holdings_and_lookup():
 
     lookup_core = market_data.lookup("ETH")
     assert lookup_core is not None
+
+
+def test_spot_trader_release_funds():
+    from unittest.mock import MagicMock
+    from spot_trader import SpotTrader
+    
+    client = MagicMock()
+    trader = SpotTrader(client=client)
+    
+    # Mock portfolio snapshot with 2 token positions
+    trader.portfolio.snapshot = MagicMock(return_value={
+        "open_positions": [
+            {"symbol": "BNKR", "address": "0x1111", "amount": 1000.0, "value_usd": 20.0},
+            {"symbol": "PLAY", "address": "0x2222", "amount": 50.0, "value_usd": 15.0}
+        ],
+        "usdc_balance": 1.90
+    })
+    
+    trader.sell = MagicMock(return_value={"status": "paper", "expected_usd": 10.0, "tx_hash": "0x_mock_sell"})
+    
+    res = trader.release_funds(target_usdc=10.0)
+    assert res["status"] == "success"
+    assert res["released_usd"] == 10.0
+    trader.sell.assert_called_once()
+
