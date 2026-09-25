@@ -319,7 +319,15 @@ class BaseClient:
         })
         tx.pop("maxFeePerGas", None)
         tx.pop("maxPriorityFeePerGas", None)
-        return self.send_transaction(tx, description=f"approve {self.symbol(token_address)}")
+        res = self.send_transaction(tx, description=f"approve {self.symbol(token_address)}")
+
+        # Attendi che l'allowance sia effettivamente propagata sui nodi RPC prima di proseguire
+        for _ in range(5):
+            if self.allowance(token_address, spender) >= amount:
+                break
+            time.sleep(1)
+
+        return res
 
     def deadline(self) -> int:
         return int(time.time()) + config.TX_DEADLINE_SECONDS

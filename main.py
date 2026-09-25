@@ -91,6 +91,7 @@ def run_cycle():
     # 2. Stato del wallet
     print("👛 Lettura del portafoglio on-chain...")
     account_status = trader.get_account_status(universe)
+    market_data.register_holdings(account_status.get("open_positions", []))
     print(f"   Valore totale: ${account_status['total_value_usd']:.2f} "
           f"(USDC ${account_status['usdc_balance']:.2f}, "
           f"{len(account_status['open_positions'])} token)")

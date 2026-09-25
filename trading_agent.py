@@ -51,6 +51,8 @@ Hard rules:
   token there passed a scam screening; anything else is off limits.
 - To reduce exposure or take profit on a token you already hold, use "sell".
 - Position sizing is expressed as a fraction of the TOTAL portfolio value.
+- Minimum trade size is $5.00 (MIN_TRADE_USD). You CANNOT buy if your free USDC (usdc_balance in portfolio) is below $5.00. In that case, choose "hold" or "sell" an existing token to raise USDC.
+- If buying, target_portion_of_portfolio * total_value_usd MUST be >= $5.00 and <= available USDC.
 - Gas is paid in ETH: never plan around spending the whole ETH balance.
 
 You MUST output ONLY a valid, raw JSON object (no extra commentary) adhering
@@ -71,6 +73,17 @@ def _clean_and_parse_json(text: str) -> dict:
     """Extract and parse JSON safely from model response."""
     if not text or not text.strip():
         raise ValueError("Risposta del modello vuota o nulla (content=None)")
+
+    # Strip conversational or moderation preamble lines (e.g. "User Safety: safe")
+    lines = text.splitlines()
+    clean_lines = [
+        l for l in lines
+        if not l.strip().lower().startswith("user safety:")
+        and not l.strip().lower().startswith("safety:")
+    ]
+    text = "\n".join(clean_lines).strip()
+    if not text:
+        raise ValueError("Risposta del modello non contiene testo valido dopo la rimozione dei prefissi di sicurezza")
 
     text = text.strip()
     

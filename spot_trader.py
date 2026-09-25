@@ -330,8 +330,8 @@ class SpotTrader:
         except RiskRejection as exc:
             logger.warning("Segnale rifiutato dai limiti di rischio: %s", exc)
             return {"status": "rejected", "message": str(exc)}
-        except BaseChainError as exc:
-            logger.error("Errore on-chain: %s", exc)
+        except (BaseChainError, Exception) as exc:
+            logger.error("Errore on-chain / esecuzione swap: %s", exc)
             return {"status": "error", "message": str(exc)}
 
     def liquidate(self, holding: Dict[str, Any], reason: str) -> Dict[str, Any]:
@@ -341,6 +341,6 @@ class SpotTrader:
             result = self.sell(token, 1.0, config.DEFAULT_SLIPPAGE_BPS)
             result["trigger"] = reason
             return result
-        except (RiskRejection, BaseChainError) as exc:
+        except (RiskRejection, BaseChainError, Exception) as exc:
             return {"status": "error", "symbol": holding["symbol"], "trigger": reason,
                     "message": str(exc)}

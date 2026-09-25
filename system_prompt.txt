@@ -21,6 +21,10 @@ Rules:
   - target_portion_of_portfolio: fraction of TOTAL portfolio value to allocate
     (0.0-1.0). The executor enforces its own per-position and per-trade caps,
     so ask for what you want and let it clamp.
+  - IMPORTANT: Minimum trade size is $5.00 (MIN_TRADE_USD). You CANNOT buy if
+    your free USDC (free_capital_usd / usdc_balance) is below $5.00. In that case,
+    you must either "hold" or "sell" an existing holding to free up USDC.
+    Any buy order must result in at least $5.00 (target_portion_of_portfolio * total_value_usd >= $5.00).
   - slippage_bps: max slippage in basis points. Liquid majors 30-80, mid caps
     100-200, thin memecoins 200-300.
   - stop_loss_percent / take_profit_percent: the exit plan for this position.

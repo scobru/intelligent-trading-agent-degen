@@ -51,10 +51,49 @@ def register_universe(universe: List[Dict[str, Any]]):
             _POOL_CACHE[token["address"].lower()] = token["pool_address"]
 
 
+def register_holdings(holdings: List[Dict[str, Any]]):
+    """
+    Rende noti i token attualmente posseduti nel wallet.
+    Permette a market_data (indicatori, Prophet) di recuperare le candele
+    e il contesto di mercato anche per token non inclusi nell'universo dello screening.
+    """
+    for holding in holdings or []:
+        addr = (holding.get("address") or "").lower()
+        symbol = (holding.get("symbol") or "").upper()
+        if not addr:
+            continue
+        existing = _REGISTRY.get(symbol) or _REGISTRY.get(addr)
+        if existing and existing.get("liquidity_usd"):
+            continue
+
+        entry = {
+            "symbol": symbol,
+            "address": addr,
+            "price_usd": holding.get("price_usd", 0.0),
+        }
+        if symbol:
+            _REGISTRY[symbol] = entry
+        _REGISTRY[addr] = entry
+
+
 def lookup(identifier: str) -> Optional[Dict[str, Any]]:
     if not identifier:
         return None
-    return _REGISTRY.get(identifier.upper()) or _REGISTRY.get(identifier.lower())
+    res = _REGISTRY.get(identifier.upper()) or _REGISTRY.get(identifier.lower())
+    if res:
+        return res
+    upper = identifier.upper()
+    core_key = "WETH" if upper == "ETH" else upper
+    if core_key in config.CORE_TOKENS:
+        meta = config.CORE_TOKENS[core_key]
+        entry = {
+            "symbol": upper,
+            "address": meta["address"].lower(),
+        }
+        _REGISTRY[upper] = entry
+        _REGISTRY[meta["address"].lower()] = entry
+        return entry
+    return None
 
 
 # ---------------------------------------------------------------- CEX
@@ -128,6 +167,22 @@ def get_pool_address(token_address: str) -> Optional[str]:
     address = best.get("attributes", {}).get("address") or best.get("id", "").split("_")[-1]
     if address:
         _POOL_CACHE[key] = address
+        token = lookup(token_address)
+        if token and not token.get("liquidity_usd"):
+            attr = best.get("attributes", {})
+            try:
+                token["liquidity_usd"] = float(attr.get("reserve_in_usd") or 0.0)
+                vol = attr.get("volume_usd", {})
+                if isinstance(vol, dict):
+                    token["volume_24h_usd"] = float(vol.get("h24") or 0.0)
+                changes = attr.get("price_change_percentage", {})
+                if isinstance(changes, dict):
+                    token["price_change_1h"] = float(changes.get("h1") or 0.0)
+                    token["price_change_24h"] = float(changes.get("h24") or 0.0)
+                if not token.get("price_usd"):
+                    token["price_usd"] = float(attr.get("base_token_price_usd") or 0.0)
+            except Exception:
+                pass
     return address
 
 
@@ -184,6 +239,8 @@ def get_market_details(identifier: str) -> Dict[str, Any]:
     """Prezzo e contesto di liquidita', dalle metriche dello screening."""
     token = lookup(identifier)
     if token:
+        if not token.get("liquidity_usd") and token.get("address"):
+            get_pool_address(token["address"])
         return {
             "price_usd": token.get("price_usd", 0.0),
             "liquidity_usd": token.get("liquidity_usd", 0.0),

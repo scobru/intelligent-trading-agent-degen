@@ -282,12 +282,17 @@ class UniswapV3:
                 "amountOutMinimum": amount_out_min,
             })
 
-        tx = fn.build_transaction({
-            "from": self.client.address,
-            "value": 0,
-            "nonce": self.w3.eth.get_transaction_count(self.client.address),
-            "chainId": config.CHAIN_ID,
-        })
+        try:
+            tx = fn.build_transaction({
+                "from": self.client.address,
+                "value": 0,
+                "nonce": self.w3.eth.get_transaction_count(self.client.address),
+                "chainId": config.CHAIN_ID,
+            })
+        except Exception as exc:
+            raise BaseChainError(
+                f"Simulazione swap Uniswap V3 fallita per {route.describe(self.client)}: {exc}"
+            ) from exc
         tx.pop("maxFeePerGas", None)
         tx.pop("maxPriorityFeePerGas", None)
 

@@ -136,11 +136,8 @@ class CryptoForecaster:
                     # capire perché una riga risultasse vuota (es. $0 in dashboard).
                     last_price = getattr(e, "last_price", None)
                     print(f"⚠️  Previsione fallita per {coin} {interval}: {type(e).__name__}: {e}")
-                    logger.warning(
-                        "Previsione fallita per %s %s: %s", coin, interval, e,
-                        exc_info=True,
-                    )
-                    logger.debug(traceback.format_exc())
+                    logger.warning("Previsione fallita per %s %s: %s", coin, interval, e)
+                    logger.debug("Dettaglio errore previsione:", exc_info=True)
 
                     results.append({
                         "Ticker": coin,

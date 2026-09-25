@@ -28,6 +28,7 @@ load_dotenv()
 PORT = int(os.getenv("DASHBOARD_PORT", os.getenv("PORT", "3000")))
 import config  # noqa: E402  stessi default del resto del bot
 from config import SQLITE_DB_PATH  # noqa: E402
+import db_utils  # noqa: E402
 
 RUN_TOKEN = os.getenv("DASHBOARD_RUN_TOKEN", "")
 PAPER_TRADING = config.PAPER_TRADING
