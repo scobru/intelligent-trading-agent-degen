@@ -42,6 +42,11 @@ def _assets_to_analyze(universe, holdings):
 
 
 def run_cycle():
+    if db_utils.is_bot_paused():
+        pinfo = db_utils.get_pause_info()
+        print(f"⏸️ Bot Degen in stato di PAUSA ({pinfo.get('reason', 'Pausa attiva')}). Ciclo ignorato.")
+        return None
+
     print(f"🚀 Avvio Degen Trading Agent su Base (wallet: {config.WALLET_ADDRESS})")
     if config.PAPER_TRADING:
         print(f"📝 PAPER TRADING: portafoglio virtuale, prezzi e rotte reali. "
