@@ -10,7 +10,6 @@ condivisi con le dashboard dei bot fratelli (principale, yield). Il pulsante
 dashboard non ha login e un ciclo puo' firmare transazioni.
 """
 
-import hmac
 import json
 import os
 import sqlite3
@@ -27,6 +26,7 @@ load_dotenv()
 
 PORT = int(os.getenv("DASHBOARD_PORT", os.getenv("PORT", "3000")))
 import config  # noqa: E402  stessi default del resto del bot
+import dashboard_auth  # noqa: E402
 from config import SQLITE_DB_PATH  # noqa: E402
 import db_utils  # noqa: E402
 
@@ -694,16 +694,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def _is_auth_valid(self) -> bool:
-        if not RUN_TOKEN:
-            return False
-        token = self.headers.get("X-Run-Token", "") or self.headers.get("X-Admin-Token", "")
-        if not token and "Authorization" in self.headers:
-            auth = self.headers.get("Authorization", "")
-            if auth.startswith("Bearer "):
-                token = auth[7:].strip()
-            else:
-                token = auth.strip()
-        return bool(token and hmac.compare_digest(token, RUN_TOKEN))
+        return dashboard_auth.is_run_token_valid(self.headers, RUN_TOKEN)
 
     def do_POST(self):
         path = urlparse(self.path).path
