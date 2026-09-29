@@ -4,238 +4,249 @@
 
 <br clear="left">
 
-> ⚠️ **Software sperimentale, non consulenza finanziaria.** Il bot opera con denaro reale su Base e può perdere in parte o del tutto il capitale che gli affidi. Parti in paper trading o dry-run; in live usa un wallet dedicato e solo importi che puoi permetterti di perdere. Dettagli nella sezione **Avvertenza** in fondo.
+**English** · [Italiano](README.it.md)
 
-Agente di trading speculativo che opera **direttamente dal wallet su Base**:
-niente protocolli di terze parti, niente leva, niente perpetual. Compra e
-vende token ERC-20 (meme incluse) via **Uniswap V3**, con uno screening
-anti-scam davanti a ogni acquisto.
+> ⚠️ **Experimental software, not financial advice.** The bot trades real money on Base and can lose some or all of the capital you give it. Start with paper trading or dry-run; when you go live, use a dedicated wallet and only amounts you can afford to lose. See the **Disclaimer** section at the bottom.
 
-È la variante spot di
-[intelligent-trading-agent](https://github.com/scobru/intelligent-trading-agent),
-che invece opera sui perpetual di SynFutures V3. Struttura, dashboard,
-notifiche Telegram e ciclo decisionale sono gli stessi: cambia il layer di
-esecuzione e si aggiunge la selezione dei token.
+A speculative trading agent that trades **straight from the wallet on Base**:
+no third-party protocols, no leverage, no perpetuals. It buys and sells ERC-20
+tokens (memecoins included) through **Uniswap V3**, with anti-scam screening
+in front of every purchase.
 
----
-
-## 🧠 Come funziona un ciclo
-
-1. **Screening** — l'universo tradabile viene ricostruito a ogni ciclo:
-   - scoperta dei token più scambiati su Base (GeckoTerminal);
-   - **CoinGecko**: se il token non è nella token list ufficiale di Base, è fuori;
-   - **liquidità, volume 24h, età della pool** (DexScreener) sopra soglia;
-   - **GoPlus Security**: honeypot, buy/sell tax, mintable, owner nascosto,
-     trasferimenti sospendibili, blacklist, selfdestruct.
-
-   Ogni scarto conserva il motivo e finisce in dashboard: si vede *perché* un
-   token non è stato considerato.
-
-2. **Portafoglio** — saldi letti on-chain (`balanceOf`), valorizzati quotando
-   la rotta reale su Uniswap. Prezzo di carico, stop loss e take profit vivono
-   in `positions.json`, perché on-chain non esistono.
-
-3. **Uscite automatiche** — stop loss e take profit vengono eseguiti *prima* di
-   sentire il modello: non si delega a un LLM la gestione del rischio.
-
-4. **Analisi** — indicatori tecnici e previsioni Prophet sugli asset del ciclo.
-   Le candele arrivano dai CEX per i major e dalla pool più liquida su Base per
-   le meme.
-
-5. **Decisione** — l'LLM (via OpenRouter) riceve universo, indicatori, news,
-   sentiment e forecast, e risponde con un JSON `buy` / `sell` / `hold`.
-
-6. **Esecuzione** — quoting su QuoterV2 (rotta diretta su tutte le fee tier,
-   più due salti via WETH), swap su SwapRouter02, il tutto dentro i limiti di
-   rischio.
+It is part of the [Intelligent Trading](https://github.com/scobru/intelligent-trading)
+suite of agents for Base, and it is the spot sibling of the
+[perp bot](https://github.com/scobru/intelligent-trading-agent-perp), which
+trades SynFutures V3 perpetuals. Structure, dashboard, Telegram notifications
+and decision cycle are the same: the execution layer changes and token
+selection is added.
 
 ---
 
-## 🛡️ Barriere prima di ogni transazione
+## 🧠 How a cycle works
 
-| Limite | Default | Variabile |
+1. **Screening** — the tradable universe is rebuilt every cycle:
+   - discovery of the most traded tokens on Base (GeckoTerminal);
+   - **CoinGecko**: if the token is not in the official Base token list, it is out;
+   - **liquidity, 24h volume, pool age** (DexScreener) above thresholds;
+   - **GoPlus Security**: honeypot, buy/sell tax, mintable, hidden owner,
+     pausable transfers, blacklist, selfdestruct.
+
+   Every rejection keeps its reason and shows up in the dashboard: you can see
+   *why* a token was not considered.
+
+2. **Portfolio** — balances read on-chain (`balanceOf`), valued by quoting the
+   real route on Uniswap. Cost basis, stop loss and take profit live in
+   `positions.json`, because they do not exist on-chain.
+
+3. **Automatic exits** — stop loss and take profit are executed *before*
+   consulting the model: risk management is not delegated to an LLM.
+
+4. **Analysis** — technical indicators and Prophet forecasts on the cycle's
+   assets. Candles come from CEXs for the majors and from the most liquid Base
+   pool for memecoins.
+
+5. **Decision** — the LLM (via OpenRouter) receives universe, indicators, news,
+   sentiment and forecasts, and answers with a `buy` / `sell` / `hold` JSON.
+
+6. **Execution** — quoting on QuoterV2 (direct route on every fee tier, plus
+   two hops via WETH), swap on SwapRouter02, all within the risk limits.
+
+---
+
+## 🛡️ Guardrails before every transaction
+
+| Limit | Default | Variable |
 |---|---|---|
-| Nessuna transazione firmata | **attivo** | `DRY_RUN=true` |
-| Quota massima su un token | 25% del portafoglio | `MAX_POSITION_PCT` |
-| Token detenuti contemporaneamente | 5 | `MAX_OPEN_TOKENS` |
-| Importo per trade | $5 – $250 | `MIN_TRADE_USD`, `MAX_TRADE_USD` |
-| Slippage massimo | 3% | `MAX_SLIPPAGE_BPS` |
-| Gas price massimo | 0.5 gwei | `MAX_GAS_PRICE_GWEI` |
-| Riserva ETH per il gas | 0.0015 ETH | `MIN_ETH_RESERVE` |
+| No transaction is signed | **on** | `DRY_RUN=true` |
+| Max share in a single token | 25% of the portfolio | `MAX_POSITION_PCT` |
+| Tokens held at the same time | 5 | `MAX_OPEN_TOKENS` |
+| Amount per trade | $5 – $250 | `MIN_TRADE_USD`, `MAX_TRADE_USD` |
+| Max slippage | 3% | `MAX_SLIPPAGE_BPS` |
+| Max gas price | 0.5 gwei | `MAX_GAS_PRICE_GWEI` |
+| ETH reserve for gas | 0.0015 ETH | `MIN_ETH_RESERVE` |
 | Stop loss / take profit | -20% / +40% | `DEFAULT_STOP_LOSS_PCT`, `DEFAULT_TAKE_PROFIT_PCT` |
 
-Il modello **non può aggirarli**: sono applicati dall'esecutore, non dal prompt.
-Un segnale fuori limite viene rifiutato e il motivo finisce a DB e in Telegram.
+The model **cannot bypass them**: they are enforced by the executor, not by
+the prompt. A signal outside the limits is rejected and the reason is stored
+in the DB and sent to Telegram.
 
-All'avvio il bot verifica on-chain gli indirizzi configurati (`symbol`,
-`decimals`, presenza del bytecode): un indirizzo sbagliato ferma il ciclo
-invece di far partire uno swap verso il nulla.
+On startup the bot checks the configured addresses on-chain (`symbol`,
+`decimals`, bytecode present): a wrong address stops the cycle instead of
+sending a swap into the void.
 
 ---
 
-## 🚀 Avvio
+## 🚀 Getting started
 
 ```bash
-cp .env.example .env     # compila wallet, RPC e chiave OpenRouter
+cp .env.example .env     # fill in wallet, RPC and OpenRouter key
 pip install -r requirements.txt
-python main.py           # un ciclo, in dry-run
-python dashboard.py      # dashboard su http://localhost:3000
+python main.py           # one cycle, in dry-run
+python dashboard.py      # dashboard at http://localhost:3000
 ```
 
-Con Docker:
+With Docker:
 
 ```bash
 docker compose up --build
 ```
 
-### Deploy su CapRover
+### Deploy on CapRover
 
-Il repo è pronto per CapRover: `captain-definition` in root, un solo
-processo, nessun servizio Node da buildare (a differenza del bot perp).
+The repo is ready for CapRover: `captain-definition` at the root, a single
+process, no Node service to build (unlike the perp bot).
 
-1. **Crea l'app** e collega il repo (o `caprover deploy` dalla cartella).
-2. **App Configs → Container HTTP Port: `3000`.** CapRover di default
-   assume la 80: senza questo la dashboard non risponde.
-3. **Persistent Directories** → mappa `/app/data`. Database SQLite e
-   `positions.json` ci finiscono da soli (`config.persistent_path()` usa
-   `/app/data` quando esiste), così storico, swap, screening **e i prezzi di
-   carico delle posizioni** sopravvivono ai redeploy. Senza questa mappatura
-   riparti da zero a ogni deploy: il bot si ritroverebbe i token nel wallet
-   senza sapere a quanto li ha comprati, quindi senza stop loss.
-4. **Environment Variables**: almeno `OPENROUTER_API_KEY`, `WALLET_ADDRESS`,
-   `PRIVATE_KEY`, `BASE_RPC_URL`. Lascia `DRY_RUN=true` per i primi cicli.
-   Le chiavi vanno qui, non nel repo: il `.env` è escluso dall'immagine.
-5. **Enable HTTPS** se esponi la dashboard: non ha autenticazione. Il
-   pulsante "Esegui ciclo ora" resta disattivato finché non imposti
-   `DASHBOARD_RUN_TOKEN` (il browser lo chiede una volta e lo ricorda).
+1. **Create the app** and connect the repo (or `caprover deploy` from the folder).
+2. **App Configs → Container HTTP Port: `3000`.** CapRover assumes port 80 by
+   default: without this the dashboard does not respond.
+3. **Persistent Directories** → map `/app/data`. The SQLite database and
+   `positions.json` go there automatically (`config.persistent_path()` uses
+   `/app/data` when it exists), so history, swaps, screening **and the cost
+   basis of your positions** survive redeploys. Without this mapping you start
+   from scratch on every deploy: the bot would find tokens in the wallet
+   without knowing what it paid for them, and therefore without a stop loss.
+4. **Environment Variables**: at least `OPENROUTER_API_KEY`, `WALLET_ADDRESS`,
+   `PRIVATE_KEY`, `BASE_RPC_URL`. Keep `DRY_RUN=true` for the first cycles.
+   Keys go here, not in the repo: `.env` is excluded from the image.
+5. **Enable HTTPS** if you expose the dashboard: it has no login. The "Run
+   cycle now" button stays disabled until you set `DASHBOARD_RUN_TOKEN` (the
+   browser asks for it once and remembers it).
 
-Il build installa Prophet (qualche minuto, scarica un wheel precompilato con
-cmdstan). Su istanze da 1 GB di RAM conviene tenere d'occhio la memoria
-durante il primo build.
+The build installs Prophet (a few minutes, it downloads a prebuilt wheel with
+cmdstan). On 1 GB RAM instances keep an eye on memory during the first build.
 
-L'intervallo fra i cicli è `TRADING_INTERVAL` (default 900s), come nel bot perp.
+The interval between cycles is `TRADING_INTERVAL` (default 900s), as in the
+perp bot.
 
-### Le tre modalità
+### The three modes
 
-| Modalità | `.env` | Cosa succede |
+| Mode | `.env` | What happens |
 |---|---|---|
-| **Dry-run** (default) | `DRY_RUN=true` | Legge il wallet vero, decide, ma non firma. Se non hai USDC gli ordini vengono rifiutati dai limiti di rischio. |
-| **Paper trading** | `PAPER_TRADING=true` | Portafoglio virtuale (`PAPER_START_USDC`, default $1000) con **prezzi e rotte reali**: gli ordini vengono eseguiti contro il saldo finto, quindi vedi P&L, stop loss e take profit lavorare senza capitale sul wallet. Implica sempre il dry-run. |
-| **Live** | `DRY_RUN=false` | Firma e manda le transazioni. |
+| **Dry-run** (default) | `DRY_RUN=true` | Reads the real wallet and decides, but does not sign. Without USDC, orders are rejected by the risk limits. |
+| **Paper trading** | `PAPER_TRADING=true` | Virtual portfolio (`PAPER_START_USDC`, default $1000) with **real prices and routes**: orders are executed against the fake balance, so you can watch P&L, stop loss and take profit work without capital in the wallet. Always implies dry-run. |
+| **Live** | `DRY_RUN=false` | Signs and sends the transactions. |
 
-In paper trading resta reale tutto tranne i saldi: quotazioni Uniswap,
-screening, limiti di rischio e decisioni del modello. Il riempimento sconta
-sempre lo slippage massimo, così la simulazione è pessimista invece che
-ottimista, e ogni swap addebita `PAPER_GAS_USD` di gas figurato.
-Lo stato vive in `paper_portfolio.json` sul volume persistente: per
-ricominciare da capo, cancella quel file.
+In paper trading everything is real except the balances: Uniswap quotes,
+screening, risk limits and model decisions. Fills always pay the maximum
+slippage, so the simulation is pessimistic rather than optimistic, and every
+swap charges `PAPER_GAS_USD` of notional gas. The state lives in
+`paper_portfolio.json` on the persistent volume: delete that file to start
+over.
 
-**Parti sempre in dry-run o paper.** Quando passi in live, usa un
-wallet dedicato con dentro solo quello che puoi perdere.
+**Always start in dry-run or paper.** When you go live, use a dedicated wallet
+holding only what you can afford to lose.
 
-### ⛽ Rifornimento Automatico (Auto-Refuel ETH -> USDC)
+### ⛽ Auto-refuel (ETH → USDC)
 
-Se il wallet ha USDC insufficienti (< `USDC_AUTO_SWAP_THRESHOLD`, default $5.0) ma possiede ETH nativo, l'agente converte in automatico l'ETH in eccesso in USDC tramite Uniswap V3 all'inizio del ciclo, riservando sempre l'ETH per pagare le fee (`ETH_GAS_RESERVE`, default 0.003 ETH).
-In questo modo è sufficiente inviare solo ETH al wallet per rendere il bot operativo, senza dover inviare separatamente anche USDC.
+If the wallet holds too little USDC (< `USDC_AUTO_SWAP_THRESHOLD`, default
+$5.0) but has native ETH, the agent automatically converts the excess ETH into
+USDC on Uniswap V3 at the start of the cycle, always keeping the ETH needed for
+fees (`ETH_GAS_RESERVE`, default 0.003 ETH). Sending only ETH to the wallet is
+enough to make the bot operational.
 
 ```bash
-# Controllo rapido o esecuzione manuale refuel
+# Quick check or manual refuel
 python main.py --refuel
 
-# Ispezione saldi wallet con il tool dedicato
+# Inspect wallet balances with the dedicated tool
 python tools/refuel.py --status
 ```
 
 ---
 
-## 🎯 Seguire un token specifico
+## 🎯 Following a specific token
 
-L'universo si costruisce da solo dai token più scambiati su Base, ma puoi
-aggiungerne di tuoi senza toccare il codice:
+The universe builds itself from the most traded tokens on Base, but you can
+add your own without touching the code:
 
 ```bash
-# valutato a ogni ciclo, anche se non è fra i più scambiati del momento
-TOKEN_WATCHLIST="0xIndirizzoDelToken"
+# evaluated every cycle, even if it is not among the most traded right now
+TOKEN_WATCHLIST="0xTokenAddress"
 
-# se non è nella token list CoinGecko di Base, marcalo come verificato da te:
-# salta QUEL requisito, non i controlli di liquidità e di contratto
-TOKEN_TRUSTED="0xIndirizzoDelToken"
+# if it is not in the CoinGecko Base token list, mark it as verified by you:
+# it skips THAT requirement, not the liquidity and contract checks
+TOKEN_TRUSTED="0xTokenAddress"
 ```
 
-L'indirizzo va preso da una fonte che controlli tu (sito ufficiale del
-progetto, BaseScan, CoinGecko): copiare un contratto sbagliato è esattamente
-il modo in cui si compra un clone-scam, e nessuno screening può salvarti da
-un indirizzo che gli hai dato tu come buono.
+Take the address from a source you trust (the project's official site,
+BaseScan, CoinGecko): copying the wrong contract is exactly how people buy a
+scam clone, and no screening can save you from an address you told it was
+good.
 
-## 📁 Struttura
+## 📁 Structure
 
-| File | Ruolo |
+| File | Role |
 |---|---|
-| `main.py` | il ciclo: screening → analisi → decisione → esecuzione |
-| `config.py` | contratti Base, soglie di rischio e di screening |
-| `base_client.py` | RPC, ERC-20, invio transazioni, dry-run, tetto gas |
-| `uniswap.py` | quoting QuoterV2, scelta rotta, swap SwapRouter02 |
+| `main.py` | the cycle: screening → analysis → decision → execution |
+| `config.py` | Base contracts, risk and screening thresholds |
+| `base_client.py` | RPC, ERC-20, transaction sending, dry-run, gas cap |
+| `uniswap.py` | QuoterV2 quoting, route selection, SwapRouter02 swaps |
 | `token_screener.py` | CoinGecko + DexScreener + GoPlus |
-| `wallet.py` | portafoglio on-chain, prezzo di carico, uscite di rischio |
-| `spot_trader.py` | traduzione del segnale in swap, limiti di rischio |
-| `market_data.py` | candele: CEX per i major, pool Base per le meme |
-| `http_client.py` | pacing, retry e cache per le API pubbliche |
-| `paper.py` | portafoglio virtuale per il paper trading |
-| `indicators.py` | analisi tecnica |
-| `forecaster.py` | previsioni Prophet 15m e 1h |
-| `trading_agent.py` | chiamata LLM, schema JSON, fallback di sicurezza |
-| `db_utils.py` | persistenza SQLite (snapshot, swap, screening, errori) |
-| `dashboard.py` | dashboard web |
-| `static/dashboard.css`, `static/dashboard.js` | design system condiviso con i bot fratelli |
-| `telegram_bot.py` | notifiche e comandi |
+| `wallet.py` | on-chain portfolio, cost basis, risk exits |
+| `spot_trader.py` | turns the signal into a swap, risk limits |
+| `market_data.py` | candles: CEXs for the majors, Base pools for memecoins |
+| `http_client.py` | pacing, retries and caching for public APIs |
+| `paper.py` | virtual portfolio for paper trading |
+| `indicators.py` | technical analysis |
+| `forecaster.py` | Prophet forecasts, 15m and 1h |
+| `trading_agent.py` | LLM call, JSON schema, safety fallback |
+| `db_utils.py` | SQLite persistence (snapshots, swaps, screening, errors) |
+| `dashboard.py`, `dashboard_auth.py` | web dashboard and token check for its commands |
+| `static/dashboard.css`, `static/dashboard.js` | design system shared with the sibling bots |
+| `telegram_bot.py` | notifications and commands |
 
 ---
 
-### Dashboard coerente fra i tre agenti
+### A consistent dashboard across the suite
 
-Le dashboard di `intelligent-trading-agent`, `-degen` e `-yield` condividono lo
-stesso design system: `static/dashboard.css` e `static/dashboard.js` sono
-**identici nei tre repository** (se li modifichi, copiali negli altri due).
-Ogni pagina ha la stessa struttura: header con badge di modalità
-(`LIVE` / `PAPER` / `DRY-RUN`), pannello paper trading, KPI, andamento del
-capitale, posizioni e ultima decisione AI, sezioni specifiche del bot, storico
-operazioni ed errori. Cambia solo il colore d'accento (blu, arancio, verde)
-e l'icona.
+All the agents in the suite share the same design system:
+`static/dashboard.css` and `static/dashboard.js` are **identical in every
+repository** (if you change them, copy them to the others). Every page has the
+same structure: header with a mode badge (`LIVE` / `PAPER` / `DRY-RUN`), paper
+trading panel, KPIs, equity curve, positions and last AI decision, bot-specific
+sections, operation history and errors. Only the accent color and the icon
+change.
 
+#### Wallet and gas
 
-#### Wallet e gas
-
-Sotto l'header, fuori dal paper trading, la dashboard mostra il wallet del
-bot: ETH per il gas (con il controvalore), USDC liberi, indirizzo con link a
-Basescan e uno stato: **OK**, **IN ESAURIMENTO** (sotto `GAS_WARN_ETH`) o
-**RICARICA ORA** (sotto la riserva minima). Lo stesso avviso compare nel
-report Telegram del ciclo.
+Below the header, outside paper trading, the dashboard shows the bot's wallet:
+ETH for gas (with its dollar value), free USDC, address with a Basescan link
+and a status: **OK**, **RUNNING LOW** (below `GAS_WARN_ETH`) or **TOP UP NOW**
+(below the minimum reserve). The same warning appears in the cycle's Telegram
+report.
 
 ---
 
-## ⚠️ Avvertenza
+## ⚠️ Disclaimer
 
-Questo software è sperimentale ed è fornito "così com'è", senza garanzie di alcun tipo
-(vedi la licenza MIT). Non è consulenza finanziaria né un invito a investire.
+This software is experimental and provided "as is", without warranty of any
+kind (see the MIT license). It is not financial advice nor an invitation to
+invest.
 
-- **Puoi perdere denaro.** Bug, decisioni sbagliate del modello, slippage, exploit dei protocolli,
-  oracoli manipolati e liquidazioni possono far perdere in parte o del tutto il capitale.
-- **Le decisioni le prende un LLM.** Può sbagliare o comportarsi in modo imprevedibile: i limiti
-  dell'esecutore riducono il danno, non lo azzerano. I rendimenti passati, anche in paper, non
-  garantiscono quelli futuri.
-- **Parti in paper o dry-run.** In live usa un wallet dedicato al bot, con importi che puoi
-  permetterti di perdere, e non riutilizzare quella chiave privata altrove.
-- **Proteggi le chiavi.** La chiave privata va solo nelle variabili d'ambiente del deploy: non
-  committarla mai. Senza `DASHBOARD_RUN_TOKEN` i comandi della dashboard restano disattivati:
-  impostalo con un valore lungo e casuale prima di esporla su Internet.
-- **Leggi e tasse.** Sei responsabile del rispetto delle norme e degli obblighi fiscali del tuo paese.
-- **Memecoin.** Token nuovi e illiquidi possono andare a zero in pochi minuti, essere honeypot o avere tasse nascoste: i filtri di sicurezza riducono il rischio, non lo eliminano.
+- **You can lose money.** Bugs, wrong model decisions, slippage, protocol
+  exploits, manipulated oracles and liquidations can cause the loss of some or
+  all of your capital.
+- **Decisions are made by an LLM.** It can be wrong or behave unpredictably:
+  the executor's limits reduce the damage, they do not eliminate it. Past
+  results, paper ones included, do not guarantee future ones.
+- **Start with paper or dry-run.** When live, use a wallet dedicated to the
+  bot, with amounts you can afford to lose, and never reuse that private key
+  elsewhere.
+- **Protect your keys.** The private key belongs only in the deployment's
+  environment variables: never commit it. Without `DASHBOARD_RUN_TOKEN` the
+  dashboard commands stay disabled: set it to a long random value before
+  exposing the dashboard to the Internet.
+- **Laws and taxes.** You are responsible for complying with the rules and tax
+  obligations of your country.
+- **Memecoins.** New and illiquid tokens can go to zero in minutes, be
+  honeypots or carry hidden taxes: the safety filters reduce the risk, they do
+  not eliminate it.
 
-**Rischi specifici di questo bot.** Questo è un bot speculativo che compra memecoin con capitale reale. Lo
-screening riduce il rischio di scam contract, **non** il rischio di mercato:
-una meme può perdere il 90% restando un token perfettamente "sano" per GoPlus.
-Nessuna garanzia, nessuna promessa di rendimento. Software fornito così com'è.
+**Risks specific to this bot.** This is a speculative bot that buys memecoins
+with real capital. Screening reduces the risk of scam contracts, **not** market
+risk: a memecoin can lose 90% while remaining a perfectly "healthy" token for
+GoPlus. No guarantees, no promised returns.
 
-## 📜 Licenza
+## 📜 License
 
 MIT.
