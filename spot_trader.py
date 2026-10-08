@@ -364,6 +364,7 @@ class SpotTrader:
             }
 
         executed_trades = []
+        failures = []
         total_freed = 0.0
         # Ordina per valore decrescente per minimizzare il numero di transazioni
         holdings.sort(key=lambda h: float(h.get("value_usd", 0.0)), reverse=True)
@@ -392,17 +393,26 @@ class SpotTrader:
                     })
                 else:
                     logger.warning("Liquidazione non riuscita per %s: %s", h.get('symbol'), res)
+                    reason = "DRY_RUN attivo: nessuna tx inviata" if res.get("status") == "dry_run" \
+                        else (res.get("message") or res.get("status"))
+                    failures.append(f"{h['symbol']}: {reason}")
             except Exception as exc:
                 logger.error("Errore liquidazione token %s in release_funds: %s", h.get('symbol'), exc)
+                failures.append(f"{h['symbol']}: {exc}")
 
         new_snapshot = self.portfolio.snapshot()
         current_usdc = float(new_snapshot.get("usdc_balance", 0.0))
+        message = f"Liberati ${total_freed:.2f} USDC (saldo attuale: ${current_usdc:.2f})"
+        if failures:
+            message += " | Non venduti: " + "; ".join(failures)
         return {
-            "status": "success",
+            # nessuna vendita riuscita su posizioni esistenti = errore, non successo
+            "status": "success" if executed_trades else "error",
             "released_usd": round(total_freed, 2),
             "target_requested": target_usdc,
             "trades": executed_trades,
+            "failures": failures,
             "usdc_balance": round(current_usdc, 2),
-            "message": f"Liberati ${total_freed:.2f} USDC (saldo attuale: ${current_usdc:.2f})"
+            "message": message,
         }
 
